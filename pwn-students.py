@@ -49,12 +49,15 @@ msg = binascii.unhexlify(msg)
 #wurde schon davor mit iv gemacht
 #muss um 1 erhöhen wenn padding fehler detected
 
+def xor_bytearrays(a, b):
+    return bytearray(x ^ y for (x, y) in zip(a, b))
+
 message_string = ""
 for block in range(6):
     if block is 0:
         # First iteration: use iv as 'c1'
         c1 = iv
-        c2 = msg[:16] 
+        c2 = msg[:16]
     else:
         # Block - 1 because we are we iterate over two blocks of six total blocks five times (-> prevent out of bounds)
         offset = (block - 1) * 16
@@ -62,24 +65,31 @@ for block in range(6):
         
     attack_vector = bytearray(16)
     message = bytearray(16)
-    for position in range(16):
-        # Need to fill bytes left to position in attack with valid padding (e.g. attack postion = 3 -> c1 should look like this: ... 0x03/0x03/0x03)
+    for position in range(16):        
+        # Create our m2' -> we know how it looks like if the website returns a OK response
         m2_at_position = bytearray(16)
-        for padding_index in range(position):
-            m2_at_position[15 - padding_index] = position
-        for padding_index in range(position):
-            tmp = bytes([a^ b for a, b in zip(m2_at_position, message)])
-            attack_vector[15 - padding_index] = tmp[15 - padding_index]
-        for hex in range(16):        
+        valid_padding_value = position + 1
+        for padding_index in range(valid_padding_value):
+            m2_at_position[15 - padding_index] = valid_padding_value
+        
+        # Adjust bytes left to position in attack with values that result in desired padding to the left -> only need to bruteforce position. We get the values in the attack vector by xor'ing previous message values with our m2_at_position
+        attack_vector = xor_bytearrays(message, m2_at_position)
+        for hex in range(16 * 16):
             attack_vector[15 - position] = hex
-            c1 = bytes([a^ b for a, b in zip(c1, attack_vector)]) # Need to convert attack vector to bytes so it can be xor'd
+            # xor c1 and attack vector
+            c1_modified = xor_bytearrays(attack_vector, c1)
             # Send c1 and c2 to server -> check response
-            s.send(binascii.hexlify(c1 + c2) + b"\n")
+            s.send(binascii.hexlify(bytes(c1_modified)) + b"\n", socket.MSG_MORE)
+            s.send(binascii.hexlify(c2) + b"\n")
             response = read_until(s, b"\n")
             if b"OK!\n" in response:
-                message_at_position = bytes([a^ b for a, b in zip(m2_at_position, attack_vector)]) # Only gives valid value at position
+                message_at_position = xor_bytearrays(m2_at_position, attack_vector) 
+                # Only gives valid value at position -> only copy it at the position
                 message[15 - position] = message_at_position[15 - position]
+                # Print statement to see if it works
                 print(f"block: {block}, position: {15 - position}, message char: {message[15 - position]}")
                 break
-    message_string += binascii.hexlify(bytes(message))
+    # Concat old message to new message
+    message_string = f"{message_string}{bytes(message).decode()}" 
+    print(message_string)
 print(message_string)
