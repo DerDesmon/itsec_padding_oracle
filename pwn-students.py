@@ -2,6 +2,7 @@ import binascii
 import socket
 import re
 import base64
+import time
 
 # TODO: Replace password
 PASSWORD = b"016c443fe7431375"
@@ -53,8 +54,8 @@ def xor_bytearrays(a, b):
     return bytearray(x ^ y for (x, y) in zip(a, b))
 
 message_string = ""
-for block in range(6):
-    if block is 0:
+for block in range(3):
+    if block == 0:
         # First iteration: use iv as 'c1'
         c1 = iv
         c2 = msg[:16]
@@ -62,7 +63,7 @@ for block in range(6):
         # Block - 1 because we are we iterate over two blocks of six total blocks five times (-> prevent out of bounds)
         offset = (block - 1) * 16
         c1, c2 = msg[offset: 16 + offset], msg[16 + offset : 32 + offset]
-        
+    
     attack_vector = bytearray(16)
     message = bytearray(16)
     for position in range(16):        
@@ -74,20 +75,23 @@ for block in range(6):
         
         # Adjust bytes left to position in attack with values that result in desired padding to the left -> only need to bruteforce position. We get the values in the attack vector by xor'ing previous message values with our m2_at_position
         attack_vector = xor_bytearrays(message, m2_at_position)
+        
         for hex in range(16 * 16):
             attack_vector[15 - position] = hex
             # xor c1 and attack vector
             c1_modified = xor_bytearrays(attack_vector, c1)
             # Send c1 and c2 to server -> check response
-            s.send(binascii.hexlify(bytes(c1_modified)) + b"\n", socket.MSG_MORE)
+            s.send(binascii.hexlify(c1_modified) + b"\n", socket.MSG_MORE)
             s.send(binascii.hexlify(c2) + b"\n")
+            
             response = read_until(s, b"\n")
+            while b"\n" not in response:
+                pass
+            
             if b"OK!\n" in response:
-                message_at_position = xor_bytearrays(m2_at_position, attack_vector) 
                 # Only gives valid value at position -> only copy it at the position
-                message[15 - position] = message_at_position[15 - position]
+                message[15 - position] = valid_padding_value ^ attack_vector[15 - position]
                 # Print statement to see if it works
-                print(f"block: {block}, position: {15 - position}, message char: {message[15 - position]}")
                 break
     # Concat old message to new message
     message_string = f"{message_string}{bytes(message).decode()}" 
