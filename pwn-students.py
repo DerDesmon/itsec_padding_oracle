@@ -42,14 +42,6 @@ msg = binascii.unhexlify(msg)
 
 # TODO: Implement padding oracle attack here by altering the code below
 
-# aufgbae : herausfinden was wir schicken müssen, ob ganze message das komplette oder nur 2 sachen
-#kopier script schick 32 byte als string , und was ist die response
-#
-
-# For Schleife, die c1, c2 automatisch aus message extrahiert
-#wurde schon davor mit iv gemacht
-#muss um 1 erhöhen wenn padding fehler detected
-
 def xor_bytearrays(a, b):
     return bytearray(x ^ y for (x, y) in zip(a, b))
 
@@ -64,6 +56,9 @@ for block in range(3):
         offset = (block - 1) * 16
         c1, c2 = msg[offset: 16 + offset], msg[16 + offset : 32 + offset]
     
+    
+    print(binascii.hexlify(c1))
+    print(binascii.hexlify(c2))
     attack_vector = bytearray(16)
     message = bytearray(16)
     for position in range(16):        
@@ -76,6 +71,8 @@ for block in range(3):
         # Adjust bytes left to position in attack with values that result in desired padding to the left -> only need to bruteforce position. We get the values in the attack vector by xor'ing previous message values with our m2_at_position
         attack_vector = xor_bytearrays(message, m2_at_position)
         
+        #print(binascii.hexlify(m2_at_position))
+        
         for hex in range(16 * 16):
             attack_vector[15 - position] = hex
             # xor c1 and attack vector
@@ -83,15 +80,14 @@ for block in range(3):
             # Send c1 and c2 to server -> check response
             s.send(binascii.hexlify(c1_modified) + b"\n", socket.MSG_MORE)
             s.send(binascii.hexlify(c2) + b"\n")
-            
-            response = read_until(s, b"\n")
-            while b"\n" not in response:
-                pass
+            response = read_until(s, b")\n")
             
             if b"OK!\n" in response:
                 # Only gives valid value at position -> only copy it at the position
                 message[15 - position] = valid_padding_value ^ attack_vector[15 - position]
                 # Print statement to see if it works
+                #print("found")
+                #print(binascii.hexlify(attack_vector))
                 break
     # Concat old message to new message
     message_string = f"{message_string}{bytes(message).decode()}" 
