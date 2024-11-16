@@ -45,23 +45,29 @@ msg = binascii.unhexlify(msg)
 def xor_bytearrays(a, b):
     return bytearray(x ^ y for (x, y) in zip(a, b))
 
+print(len(msg))
+
 message_string = ""
 for block in range(3):
-    if block == 0:
-        # First iteration: use iv as 'c1'
-        c1 = iv
-        c2 = msg[:16]
-    else:
-        # Block - 1 because we are we iterate over two blocks of six total blocks five times (-> prevent out of bounds)
-        offset = (block - 1) * 16
-        c1, c2 = msg[offset: 16 + offset], msg[16 + offset : 32 + offset]
+    match block:
+        case 0:
+            c1 = iv
+            c2 = msg[:16]
+        case 1:
+            c1 = c2
+            c2 = msg[16:32]
+        case 2:
+            c1 = msg[-16:]
+            c2 = msg[-16:]
     
     
     print(binascii.hexlify(c1))
     print(binascii.hexlify(c2))
     attack_vector = bytearray(16)
     message = bytearray(16)
-    for position in range(16):        
+    for position in range(16):
+        if block == 2:
+            position = 4    
         # Create our m2' -> we know how it looks like if the website returns a OK response
         m2_at_position = bytearray(16)
         valid_padding_value = position + 1
@@ -71,9 +77,7 @@ for block in range(3):
         # Adjust bytes left to position in attack with values that result in desired padding to the left -> only need to bruteforce position. We get the values in the attack vector by xor'ing previous message values with our m2_at_position
         attack_vector = xor_bytearrays(message, m2_at_position)
         
-        #print(binascii.hexlify(m2_at_position))
-        
-        for hex in range(16 * 16):
+        for hex in range(16*16): # Only need to iterate through uft8 values 48 to 123 because that are possible chars for flag
             attack_vector[15 - position] = hex
             # xor c1 and attack vector
             c1_modified = xor_bytearrays(attack_vector, c1)
@@ -84,10 +88,11 @@ for block in range(3):
             
             if b"OK!\n" in response:
                 # Only gives valid value at position -> only copy it at the position
+                #print(f"a : {binascii.hexlify(attack_vector)}")
+                #print(f"c1: {binascii.hexlify(c1_modified)}")
+                #print(f"m2: {binascii.hexlify(m2_at_position)}") 
+                
                 message[15 - position] = valid_padding_value ^ attack_vector[15 - position]
-                # Print statement to see if it works
-                #print("found")
-                #print(binascii.hexlify(attack_vector))
                 break
     # Concat old message to new message
     message_string = f"{message_string}{bytes(message).decode()}" 
